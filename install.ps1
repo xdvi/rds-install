@@ -32,14 +32,32 @@ function Install-Docker-Desktop {
 
 function Install-Docker-Server {
     Write-Host "Iniciando la instalación de Docker Engine para Windows Server..." -ForegroundColor Cyan
-    
-    Write-Host "Instalando el proveedor DockerMsftProvider desde PSGallery..."
-    Install-Module -Name DockerMsftProvider -Repository PSGallery -Force -AllowClobber
 
-    Write-Host "Instalando el paquete de Docker..."
-    Install-Package -Name docker -ProviderName DockerMsftProvider -Force -Confirm:$false
+    # 1. Habilitar la característica de Contenedores (requiere reinicio si no está instalada)
+    if (-not (Get-WindowsFeature -Name Containers -ErrorAction SilentlyContinue).Installed) {
+        Write-Host "Habilitando la característica 'Containers' de Windows..." -ForegroundColor Yellow
+        Install-WindowsFeature -Name Containers
+        Write-Host "ACCIÓN REQUERIDA: La característica 'Containers' ha sido instalada." -ForegroundColor Yellow
+        Write-Host "El sistema DEBE reiniciarse para continuar. Por favor, reinicia y vuelve a ejecutar este script." -ForegroundColor Yellow
+        exit
+    }
+    Write-Host "La característica 'Containers' ya está habilitada." -ForegroundColor Green
 
-    Write-Host "Docker Engine se ha instalado."
+    # 2. Instalar el módulo de PowerShell para Docker (método moderno)
+    Write-Host "Instalando el módulo 'Docker' desde PSGallery..."
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    }
+    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+    Install-Module -Name Docker -Repository PSGallery -Force -AllowClobber
+
+    # 3. Instalar el paquete de Docker Engine
+    Write-Host "Instalando el paquete de Docker Engine..."
+    Install-Package -Name Docker -ProviderName Docker -Force
+
+    Write-Host "Docker Engine se ha instalado correctamente." -ForegroundColor Green
+    Write-Host "Iniciando el servicio de Docker..."
+    Start-Service Docker
 }
 
 function Test-Docker {
@@ -94,6 +112,8 @@ if (-not (Test-Docker)) {
             Install-Docker-Desktop
         }
 
+        # El mensaje de reinicio ahora se maneja dentro de las funciones de instalación si es necesario.
+        # Si el script llega aquí, significa que la instalación de Docker requiere un reinicio.
         Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
         Write-Host "ACCIÓN REQUERIDA: La instalación de Docker ha finalizado." -ForegroundColor Green
         Write-Host "Por favor, REINICIA TU COMPUTADORA y vuelve a ejecutar este script para completar la instalación de RustDesk Server."
