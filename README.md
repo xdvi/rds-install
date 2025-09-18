@@ -27,10 +27,12 @@ Es **crucial** que abras los siguientes puertos en el firewall de tu servidor pa
 
 ## Instalación Rápida (Windows PowerShell)
 
-Para una instalación rápida en **Windows 10/11** o **Windows Server**, abre una terminal de **PowerShell como Administrador** y ejecuta el siguiente comando. Este descargará y correrá el script de instalación automáticamente.
+Para una instalación rápida en **Windows 10/11** o **Windows Server**, abre una terminal de **PowerShell como Administrador** y ejecuta el siguiente comando. 
+
+El parámetro `-ExecutionPolicy Bypass` es necesario para permitir que el script se ejecute sin cambiar la política de seguridad de tu sistema.
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/xdvi/rds-install/main/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/xdvi/rds-install/main/install.ps1 | iex"
 ```
 
 ## ¿Cómo Empezar? (Método Manual)
