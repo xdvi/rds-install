@@ -90,11 +90,3 @@ Los scripts utilizan `docker-compose` para gestionar los servicios. Puedes usar 
     ```bash
     docker-compose logs -f
     ```
-
-## Estructura de Archivos
-
--   `install.sh`: Script principal que detecta el SO y llama al script apropiado.
--   `install-linux.sh`: Script de instalación para sistemas Linux.
--   `install-windows.sh`: Script de instalación para Windows (vía Git Bash/WSL).
--   `docker-compose.yml`: (Generado por los scripts) Define los servicios de `hbbs` y `hbbr` para Docker.
--   `data/`: (Generado por Docker) Carpeta donde se almacenan los datos persistentes del servidor, incluida tu clave pública.
