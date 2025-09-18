@@ -5,13 +5,39 @@
     Instala el servidor de RustDesk usando Docker y configura el firewall de Windows.
 .DESCRIPTION
     Este script automatiza la instalación de un servidor auto-alojado de RustDesk.
-    Verifica los prerrequisitos, configura las reglas del firewall, prepara el entorno y lanza los contenedores.
+    Verifica los prerrequisitos, ofrece instalar Docker, configura el firewall, y lanza los contenedores.
 .NOTES
     Autor: Gemini
     Fecha: 2025-09-18
 #>
 
 # --- FUNCIONES ---
+
+function Install-Docker {
+    Write-Host "Iniciando la instalación de Docker Desktop..." -ForegroundColor Cyan
+    Write-Host "Esto puede tardar varios minutos."
+
+    # Habilitar características de Windows necesarias
+    Write-Host "Habilitando Hyper-V y la plataforma de Contenedores..."
+    dism.exe /online /enable-feature /featurename:Microsoft-Hyper-V-All /all /norestart
+    dism.exe /online /enable-feature /featurename:Containers /all /norestart
+    
+    # Instalar WSL (Subsistema de Windows para Linux)
+    Write-Host "Instalando el Subsistema de Windows para Linux (WSL)..."
+    wsl --install -d Ubuntu
+
+    # Descargar Docker Desktop
+    $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
+    Write-Host "Descargando el instalador de Docker Desktop..."
+    Invoke-WebRequest -UseBasicParsing -Uri "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" -OutFile $installerPath
+
+    # Instalar Docker Desktop en modo silencioso
+    Write-Host "Instalando Docker Desktop... Por favor, espera a que finalice."
+    Start-Process -FilePath $installerPath -ArgumentList "install", "--quiet" -Wait
+
+    # Limpiar el instalador
+    Remove-Item $installerPath
+}
 
 function Test-Docker {
     try {
@@ -47,7 +73,6 @@ function Set-FirewallRules {
     $tcpRuleName = "RustDesk Server (TCP)"
     $udpRuleName = "RustDesk Server (UDP)"
 
-    # Regla para TCP
     if (-not (Get-NetFirewallRule -DisplayName $tcpRuleName -ErrorAction SilentlyContinue)) {
         Write-Host "Creando regla de firewall para TCP en los puertos $tcpPorts..."
         New-NetFirewallRule -DisplayName $tcpRuleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $tcpPorts
@@ -56,7 +81,6 @@ function Set-FirewallRules {
         Write-Host "La regla de firewall TCP '$tcpRuleName' ya existe." -ForegroundColor Yellow
     }
 
-    # Regla para UDP
     if (-not (Get-NetFirewallRule -DisplayName $udpRuleName -ErrorAction SilentlyContinue)) {
         Write-Host "Creando regla de firewall para UDP en el puerto $udpPorts..."
         New-NetFirewallRule -DisplayName $udpRuleName -Direction Inbound -Action Allow -Protocol UDP -LocalPort $udpPorts
@@ -71,22 +95,32 @@ function Set-FirewallRules {
 
 Write-Host "Iniciando el instalador del servidor RustDesk para Windows..." -ForegroundColor Cyan
 
-# 1. Configurar Firewall
-Set-FirewallRules
-
-# 2. Verificar prerrequisitos
+# 1. Verificar y/u ofrecer instalación de Docker
 Write-Host "Verificando que Docker esté en ejecución..."
 if (-not (Test-Docker)) {
-    Write-Error "Docker no parece estar en ejecución o no está instalado. Por favor, inicia Docker Desktop y vuelve a intentarlo."
-    exit 1
+    $choice = Read-Host "Docker no está detectado. ¿Desea instalar Docker Desktop? (Y/n)"
+    if ($choice -eq 'y' -or $choice -eq 'Y') {
+        Install-Docker
+        Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
+        Write-Host "ACCIÓN REQUERIDA: Docker Desktop ha sido instalado." -ForegroundColor Green
+        Write-Host "Por favor, REINICIA TU COMPUTADORA y vuelve a ejecutar este script para completar la instalación de RustDesk Server."
+        Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
+        exit
+    } else {
+        Write-Error "La instalación no puede continuar sin Docker. Saliendo."
+        exit 1
+    }
 }
 Write-Host "Docker está listo." -ForegroundColor Green
+
+# 2. Configurar Firewall
+Set-FirewallRules
 
 # 3. Obtener la dirección IP
 Write-Host "Obteniendo la dirección IP del host..."
 $ipAddress = Get-HostIpAddress
 if (-not $ipAddress) {
-    $ipAddress = Read-Host -Prompt "Por favor, introduce manualmente la dirección IP de este servidor"
+    $ipAddress = Read-Host -Prompt "Por favor, introduce manually la dirección IP de este servidor"
     if (-not $ipAddress) {
         Write-Error "La dirección IP es necesaria para continuar. Saliendo."
         exit 1
