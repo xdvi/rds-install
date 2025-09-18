@@ -33,12 +33,14 @@ function Install-Docker-Desktop {
 function Install-Docker-Server {
     Write-Host "Iniciando la instalación de Docker Engine para Windows Server con el método robusto..." -ForegroundColor Cyan
 
-    # 1. Habilitar la característica de Contenedores si es necesario
+    # 1. Habilitar la característica de Contenedores (y reiniciar SOLO si es necesario)
     if (-not (Get-WindowsFeature -Name Containers -ErrorAction SilentlyContinue).Installed) {
         Write-Host "Habilitando la característica 'Containers' de Windows..." -ForegroundColor Yellow
-        Install-WindowsFeature -Name Containers
-        Write-Host "ACCIÓN REQUERIDA: La característica 'Containers' ha sido instalada. El sistema debe reiniciar." -ForegroundColor Yellow
-        Restart-Computer -Force
+        $feature = Install-WindowsFeature -Name Containers
+        if ($feature.RestartNeeded) {
+            Write-Host "ACCIÓN REQUERIDA: La característica 'Containers' ha sido instalada y REQUIERE UN REINICIO." -ForegroundColor Yellow
+            Restart-Computer -Force
+        }
     }
     Write-Host "La característica 'Containers' ya está habilitada." -ForegroundColor Green
 
@@ -68,9 +70,9 @@ function Install-Docker-Server {
     Write-Host "Instalando el paquete 'docker' con el proveedor DockerMsftProvider..." -ForegroundColor Cyan
     Install-Package -Name docker -ProviderName DockerMsftProvider -Force
 
-    # 7. Reiniciar para completar la instalación
-    Write-Host "ACCIÓN REQUERIDA: La instalación de Docker ha finalizado. El sistema se reiniciará ahora." -ForegroundColor Yellow
-    Restart-Computer -Force
+    # 7. Intentar iniciar el servicio Docker
+    Write-Host "Instalación de Docker finalizada. Intentando iniciar el servicio..." -ForegroundColor Green
+    Start-Service Docker -ErrorAction SilentlyContinue
 }
 
 function Test-Docker {
@@ -83,7 +85,7 @@ function Test-Docker {
 
 function Get-HostIpAddress {
     try {
-        $ip = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where-Object { $_.InterfaceAlias -notlike 'Loopback*' -and $_.InterfaceAlias -notlike 'vEthernet*' } | Select-Object -First 1 | ForEach-Object { $_.IPAddress }
+        $ip = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where-Object { $_.InterfaceAlias -notlike \'Loopback*\' -and $_.InterfaceAlias -notlike \'vEthernet*\' } | Select-Object -First 1 | ForEach-Object { $_.IPAddress }
         if ($ip) { return $ip }
         else { return (Test-Connection -ComputerName (hostname) -Count 1).IPV4Address.IPAddressToString }
     } catch {
@@ -123,13 +125,24 @@ if (-not (Test-Docker)) {
             Install-Docker-Server
         } else {
             Install-Docker-Desktop
-            # Mensaje de reinicio para la versión de escritorio
             Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
             Write-Host "ACCIÓN REQUERIDA: La instalación de Docker Desktop ha finalizado." -ForegroundColor Green
-            Write-Host "Por favor, REINICIA TU COMPUTADORA y vuelve a ejecutar este script para completar la instalación de RustDesk Server."
+            Write-Host "Por favor, REINICIA TU COMPUTADORA y vuelve a ejecutar este script."
             Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
             exit
         }
+
+        # Volver a comprobar si Docker se está ejecutando después de la instalación
+        if (-not (Test-Docker)) {
+            Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
+            Write-Host "ADVERTENCIA: La instalación de Docker finalizó, pero el servicio no se está ejecutando." -ForegroundColor Yellow
+            Write-Host "Es posible que se necesite un reinicio manual. Por favor, reinicia y vuelve a ejecutar el script."
+            Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
+            exit
+        }
+
+        Write-Host "Docker se ha instalado y se está ejecutando correctamente. Continuando..." -ForegroundColor Green
+
     } else {
         Write-Error "La instalación no puede continuar sin Docker. Saliendo."; exit 1
     }
