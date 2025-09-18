@@ -25,7 +25,15 @@ Es **crucial** que abras los siguientes puertos en el firewall de tu servidor pa
 -   **TCP**: `21115`, `21116`, `21117`, `21118`, `21119`
 -   **UDP**: `21116`
 
-## ¿Cómo Empezar?
+## Instalación Rápida (Windows PowerShell)
+
+Para una instalación rápida en **Windows 10/11** o **Windows Server**, abre una terminal de **PowerShell como Administrador** y ejecuta el siguiente comando. Este descargará y correrá el script de instalación automáticamente.
+
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/xdvi/rds-install/main/install.ps1 | iex"
+```
+
+## ¿Cómo Empezar? (Método Manual)
 
 1.  **Clona o descarga este repositorio:**
     ```bash
@@ -55,7 +63,7 @@ Es **crucial** que abras los siguientes puertos en el firewall de tu servidor pa
 3.  **Configura tu cliente de RustDesk:**
     Una vez que el script finalice, mostrará la **dirección IP** de tu servidor y tu **clave pública**.
 
-    ![Configuración del cliente de RustDesk](https://rustdesk.com/images/server-custom-config.png)
+    ![Configuración del cliente de RustDesk](https://rustdesk.com/web/favicon.svg)
 
     -   En el campo **Servidor ID**, introduce la `dirección IP` de tu servidor.
     -   En el campo **Key**, copia y pega la `clave pública` que se mostró en la terminal.
