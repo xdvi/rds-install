@@ -73,6 +73,31 @@ function Test-Docker {
   }
 }
 
+function Get-PublicIP {
+    param (
+        [string[]]$Services = @(
+            "https://api.ipify.org",
+            "https://ifconfig.me",
+            "https://checkip.amazonaws.com",
+            "https://ipinfo.io/ip",
+            "https://ident.me"
+        )
+    )
+
+    foreach ($service in $Services) {
+        try {
+            $ip = Invoke-RestMethod -Uri $service -TimeoutSec 5
+            if ($ip) {
+                return $ip.Trim()
+            }
+        } catch {
+            Write-Verbose "No se pudo obtener la IP desde $service"
+        }
+    }
+
+    throw "No se pudo obtener la IP pública desde los servicios configurados."
+}
+
 function Set-FirewallRules {
   Write-Host "Configurando las reglas del Firewall de Windows..." -ForegroundColor Cyan
   $tcpPorts = "21115-21119"; $udpPorts = "21116"
@@ -140,10 +165,26 @@ Write-Host "Docker está listo." -ForegroundColor Green
 # 2. Configurar Firewall
 Set-FirewallRules
 
-# 3. Obtener la dirección del servidor (preguntar siempre para manejar IP pública/dominio)
-Write-Host "Por favor, introduce la dirección IP pública o dominio que los clientes usarán para conectar al servidor (ej. tu-ip-publica o rustdesk.example.com)."
-$serverAddress = Read-Host "Dirección del servidor"
-if (-not $serverAddress) { Write-Error "La dirección es necesaria para continuar. Saliendo."; exit 1 }
+# 3. Obtener la dirección del servidor
+$serverAddress = ""
+Write-Host "
+Configuración de la dirección pública del servidor." -ForegroundColor Cyan
+$method = Read-Host "¿Cómo deseas configurar la dirección? [A]utodetectar IP pública, [M]anual (IP/Dominio)"
+
+if ($method -eq 'a' -or $method -eq 'A') {
+    Write-Host "Detectando IP pública..." -ForegroundColor Cyan
+    try {
+        $serverAddress = Get-PublicIP
+        Write-Host "IP pública detectada: $serverAddress" -ForegroundColor Green
+    } catch {
+        Write-Warning "Falló la detección automática de IP. Por favor, introduce la dirección manualmente."
+        $serverAddress = Read-Host "Introduce la IP pública o dominio del servidor"
+    }
+} else {
+    $serverAddress = Read-Host "Introduce la IP pública o dominio del servidor"
+}
+
+if (-not $serverAddress) { Write-Error "La dirección del servidor es necesaria para continuar. Saliendo."; exit 1 }
 Write-Host "La dirección del servidor se ha establecido en: $serverAddress" -ForegroundColor Green
 
 # 4. Crear el archivo docker-compose.yml (sin -r; auto-detect)
@@ -188,7 +229,7 @@ Write-Host "docker-compose.yml creado." -ForegroundColor Green
 
 # 5. Iniciar los servicios
 Write-Host "Iniciando los servicios de RustDesk con docker-compose..."
-docker-compose up -d
+& "C:\Program Files\Docker\docker-compose.exe" up -d
 Start-Sleep -Seconds 30  # Aumentado para dar tiempo a generar claves
 
 # 6. Verificar y mostrar información final
@@ -197,7 +238,7 @@ if (Test-Path $keyPath) {
   $publicKey = Get-Content -Path $keyPath
 } else {
   Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs:"
-  docker-compose logs hbbs
+& "C:\Program Files\Docker\docker-compose.exe" logs hbbs
   exit 1
 }
 
