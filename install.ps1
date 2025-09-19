@@ -151,7 +151,15 @@ if (-not (Test-Docker)) {
 
       $composePath = "C:\Program Files\Docker\docker-compose.exe"
       Write-Host "Descargando Docker Compose desde $composeUrl..."
-      Invoke-WebRequest -Uri $composeUrl -OutFile $composePath
+      try {
+          Invoke-WebRequest -Uri $composeUrl -OutFile $composePath -ErrorAction Stop
+      } catch {
+          Write-Error "Falló la descarga de docker-compose.exe. Comprueba tu conexión a internet y la URL: $composeUrl"; exit 1
+      }
+
+      if (-not (Test-Path $composePath)) {
+          Write-Error "El archivo docker-compose.exe no se encontró en la ruta esperada después de la descarga. Saliendo."; exit 1
+      }
     }
     else {
       Install-Docker-Desktop
@@ -187,9 +195,13 @@ Set-FirewallRules
 $serverAddress = ""
 Write-Host "
 Configuración de la dirección pública del servidor." -ForegroundColor Cyan
-$method = Read-Host "¿Cómo deseas configurar la dirección? [A]utodetectar IP pública, [M]anual (IP/Dominio)"
+$choice = Read-Host "¿Detectar IP pública automáticamente? (Y/n)"
 
-if ($method -eq 'a' -or $method -eq 'A') {
+if ($choice -eq 'n' -or $choice -eq 'N') {
+    # Modo Manual
+    $serverAddress = Read-Host "Introduce la IP pública o dominio del servidor"
+} else {
+    # Modo Automático (por defecto)
     Write-Host "Detectando IP pública..." -ForegroundColor Cyan
     try {
         $serverAddress = Get-PublicIP
@@ -198,8 +210,6 @@ if ($method -eq 'a' -or $method -eq 'A') {
         Write-Warning "Falló la detección automática de IP. Por favor, introduce la dirección manualmente."
         $serverAddress = Read-Host "Introduce la IP pública o dominio del servidor"
     }
-} else {
-    $serverAddress = Read-Host "Introduce la IP pública o dominio del servidor"
 }
 
 if (-not $serverAddress) { Write-Error "La dirección del servidor es necesaria para continuar. Saliendo."; exit 1 }
