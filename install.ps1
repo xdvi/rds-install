@@ -1,3 +1,5 @@
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
 function Install-Docker-Server {
   Write-Host "Iniciando la instalación de Docker Engine para Windows Server..." -ForegroundColor Cyan
 
@@ -246,9 +248,9 @@ if ($choice -eq 'n' -or $choice -eq 'N') {
 if (-not $serverAddress) { Write-Error "La dirección del servidor es necesaria para continuar. Saliendo."; exit 1 }
 Write-Host "La dirección del servidor se ha establecido en: $serverAddress" -ForegroundColor Green
 
-# 5. Crear el archivo docker-compose.yml (sin -r; auto-detect)
+# 5. Crear el archivo docker-compose.yml
+Write-Host "Creando archivo docker-compose.yml en: $scriptDir..." -ForegroundColor Cyan
 $composeContent = @"
-version: '3'
 services:
   hbbs:
     container_name: hbbs
@@ -282,13 +284,23 @@ networks:
   rustdesk-net:
     driver: bridge
 "@
-Write-Host "Creando archivo docker-compose.yml..."
-Set-Content -Path "docker-compose.yml" -Value $composeContent
+Set-Content -Path "$scriptDir\docker-compose.yml" -Value $composeContent
 Write-Host "docker-compose.yml creado." -ForegroundColor Green
 
 # 6. Iniciar los servicios
+Write-Host "Verificando configuración de Docker..." -ForegroundColor Cyan
+$dockerInfo = docker info --format '{{.OSType}}'
+if ($dockerInfo -eq "windows") {
+    Write-Warning "Docker está en modo Windows containers. Cambiando a Linux..."
+    & "${env:ProgramFiles}\Docker\Docker\DockerCli.exe" -SwitchDaemon
+    Start-Sleep -Seconds 10
+    Write-Host "Reinicia Docker Desktop y vuelve a ejecutar el script." -ForegroundColor Yellow
+    exit
+}
+
+Set-Location $scriptDir
 Write-Host "Iniciando los servicios de RustDesk con docker-compose..."
-docker-compose up -d
+& "C:\Program Files\Docker\docker-compose.exe" up -d
 Start-Sleep -Seconds 30  # Aumentado para dar tiempo a generar claves
 
 # 7. Verificar y mostrar información final
