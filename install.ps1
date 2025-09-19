@@ -138,6 +138,41 @@ if (-not (Test-Docker)) {
 
     if ($isServer) {
       Install-Docker-Server
+    }
+    else {
+      Install-Docker-Desktop
+      Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
+      Write-Host "ACCIÓN REQUERIDA: La instalación de Docker Desktop ha finalizado." -ForegroundColor Green
+      Write-Host "Por favor, REINICIA TU COMPUTADORA y vuelve a ejecutar este script."
+      Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
+      exit
+    }
+
+    # Volver a comprobar si Docker se está ejecutando después de la instalación
+    if (-not (Test-Docker)) {
+      Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
+      Write-Host "ADVERTENCIA: La instalación de Docker finalizó, pero el servicio no se está ejecutando." -ForegroundColor Yellow
+      Write-Host "Es posible que se necesite un reinicio manual. Por favor, reinicia y vuelve a ejecutar el script."
+      Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
+      exit
+    }
+
+    Write-Host "Docker se ha instalado y se está ejecutando correctamente. Continuando..." -ForegroundColor Green
+
+  }
+  else {
+    Write-Error "La instalación no puede continuar sin Docker. Saliendo."; exit 1
+  }
+}
+Write-Host "Docker está listo." -ForegroundColor Green
+
+# 2. Verificar e instalar Docker Compose si es necesario
+if (-not (Test-DockerCompose)) {
+  Write-Warning "Docker Compose no está detectado. Intentando instalarlo para Windows Server..."
+  $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem
+  $isServer = $osInfo.ProductType -ne 1 # 1 = Workstation, 2 = DC, 3 = Server
+
+  if ($isServer) {
       # Instalar Docker Compose solo para Server (Desktop lo incluye)
       Write-Host "Instalando Docker Compose (standalone)..." -ForegroundColor Cyan
       $composeUrl = ""
@@ -177,37 +212,10 @@ if (-not (Test-Docker)) {
       } catch {
         Write-Error "No se pudo ejecutar docker-compose.exe. Verifica permisos y compatibilidad."; exit 1
       }
-    }
-    else {
-      Install-Docker-Desktop
-      Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
-      Write-Host "ACCIÓN REQUERIDA: La instalación de Docker Desktop ha finalizado." -ForegroundColor Green
-      Write-Host "Por favor, REINICIA TU COMPUTADORA y vuelve a ejecutar este script."
-      Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
-      exit
-    }
-
-    # Volver a comprobar si Docker se está ejecutando después de la instalación
-    if (-not (Test-Docker)) {
-      Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
-      Write-Host "ADVERTENCIA: La instalación de Docker finalizó, pero el servicio no se está ejecutando." -ForegroundColor Yellow
-      Write-Host "Es posible que se necesite un reinicio manual. Por favor, reinicia y vuelve a ejecutar el script."
-      Write-Host "----------------------------------------------------------------" -ForegroundColor Yellow
-      exit
-    }
-
-    Write-Host "Docker se ha instalado y se está ejecutando correctamente. Continuando..." -ForegroundColor Green
-
+  } else {
+      # En Windows Desktop, Docker Compose viene con Docker Desktop. Si no está, hay un problema mayor.
+      Write-Error "Docker Compose no está instalado. Por favor, reinstala o repara tu instalación de Docker Desktop."; exit 1
   }
-  else {
-    Write-Error "La instalación no puede continuar sin Docker. Saliendo."; exit 1
-  }
-}
-Write-Host "Docker está listo." -ForegroundColor Green
-
-# 2. Verificar Docker Compose
-if (-not (Test-DockerCompose)) {
-  Write-Error "Docker Compose no está instalado o no se encuentra en el PATH. Asegúrate de que esté instalado y vuelve a ejecutar el script."; exit 1
 }
 Write-Host "Docker Compose está listo." -ForegroundColor Green
 
