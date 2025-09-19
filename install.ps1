@@ -12,9 +12,9 @@ function Install-Docker-Server {
   }
   Write-Host "La característica 'Containers' ya está habilitada." -ForegroundColor Green
 
-  # 2. Descargar e instalar Docker Engine
+  # 2. Descargar e instalar Docker Engine (actualiza a versión más reciente; verifica en https://download.docker.com/win/static/stable/x86_64/)
   Write-Host "Descargando el instalador de Docker Engine..." -ForegroundColor Cyan
-  $installerUrl = "https://download.docker.com/win/static/stable/x86_64/docker-24.0.7.zip"
+  $installerUrl = "https://download.docker.com/win/static/stable/x86_64/docker-27.2.0.zip"  # Actualizado; cambia si hay newer
   $installerPath = "$env:TEMP\docker.zip"
   Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
 
@@ -41,18 +41,27 @@ function Install-Docker-Server {
     Write-Error "No se pudo extraer el ejecutable de Docker. Verifica la URL de descarga."; exit 1
   }
 
-  # 3. Instalar Docker Compose (standalone)
-  Write-Host "Instalando Docker Compose (standalone)..." -ForegroundColor Cyan
-  $composeUrl = "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-windows-x86_64.exe"
-  $composePath = "C:\Program Files\Docker\docker-compose.exe"
-  Invoke-WebRequest -Uri $composeUrl -OutFile $composePath
-
   # Limpiar archivos temporales
   Remove-Item $installerPath -Force
   Remove-Item "$env:TEMP\docker" -Recurse -Force
 
-  Write-Host "Instalación de Docker y Compose finalizada. Intentando iniciar el servicio..." -ForegroundColor Green
+  Write-Host "Instalación de Docker finalizada. Intentando iniciar el servicio..." -ForegroundColor Green
   Start-Service Docker -ErrorAction SilentlyContinue
+}
+
+function Install-Docker-Desktop {
+  Write-Host "Iniciando la instalación de Docker Desktop para Windows..." -ForegroundColor Cyan
+
+  # Descargar el instalador (actualiza si necesario; verifica en https://www.docker.com/products/docker-desktop/)
+  $installerUrl = "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
+  $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
+  Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+
+  # Ejecutar el instalador (incluye Compose; no necesita standalone)
+  Write-Host "Ejecutando el instalador de Docker Desktop..." -ForegroundColor Cyan
+  Start-Process -Wait -FilePath $installerPath -ArgumentList "install", "--quiet"
+
+  Write-Host "Instalación de Docker Desktop completada." -ForegroundColor Green
 }
 
 function Test-Docker {
@@ -61,17 +70,6 @@ function Test-Docker {
   }
   catch {
     return $false
-  }
-}
-
-function Get-HostIpAddress {
-  try {
-    $ip = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where-Object { $_.InterfaceAlias -notlike 'Loopback*' -and $_.InterfaceAlias -notlike 'vEthernet*' } | Select-Object -First 1 | ForEach-Object { $_.IPAddress }
-    if ($ip) { return $ip }
-    else { return (Test-Connection -ComputerName (hostname) -Count 1).IPV4Address.IPAddressToString }
-  }
-  catch {
-    Write-Warning "No se pudo determinar automáticamente la dirección IP."; return $null
   }
 }
 
@@ -93,7 +91,6 @@ function Set-FirewallRules {
   else { Write-Host "La regla de firewall UDP '$udpRuleName' ya existe." -ForegroundColor Yellow }
 }
 
-
 # --- INICIO DEL SCRIPT ---
 
 Write-Host "Iniciando el instalador del servidor RustDesk para Windows..." -ForegroundColor Cyan
@@ -107,6 +104,11 @@ if (-not (Test-Docker)) {
 
     if ($isServer) {
       Install-Docker-Server
+      # Instalar Docker Compose solo para Server (Desktop lo incluye)
+      Write-Host "Instalando Docker Compose (standalone)..." -ForegroundColor Cyan
+      $composeUrl = "https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-windows-x86_64.exe"  # Actualizado; verifica latest
+      $composePath = "C:\Program Files\Docker\docker-compose.exe"
+      Invoke-WebRequest -Uri $composeUrl -OutFile $composePath
     }
     else {
       Install-Docker-Desktop
@@ -138,23 +140,20 @@ Write-Host "Docker está listo." -ForegroundColor Green
 # 2. Configurar Firewall
 Set-FirewallRules
 
-# 3. Obtener la dirección IP
-Write-Host "Obteniendo la dirección IP del host..."
-$ipAddress = Get-HostIpAddress
-if (-not $ipAddress) {
-  $ipAddress = Read-Host -Prompt "Por favor, introduce manualmente la dirección IP de este servidor"
-  if (-not $ipAddress) { Write-Error "La dirección IP es necesaria para continuar. Saliendo."; exit 1 }
-}
-Write-Host "La IP del servidor se ha establecido en: $ipAddress" -ForegroundColor Green
+# 3. Obtener la dirección del servidor (preguntar siempre para manejar IP pública/dominio)
+Write-Host "Por favor, introduce la dirección IP pública o dominio que los clientes usarán para conectar al servidor (ej. tu-ip-publica o rustdesk.example.com)."
+$serverAddress = Read-Host "Dirección del servidor"
+if (-not $serverAddress) { Write-Error "La dirección es necesaria para continuar. Saliendo."; exit 1 }
+Write-Host "La dirección del servidor se ha establecido en: $serverAddress" -ForegroundColor Green
 
-# 4. Crear el archivo docker-compose.yml
+# 4. Crear el archivo docker-compose.yml (sin -r; auto-detect)
 $composeContent = @"
 version: '3'
 services:
   hbbs:
     container_name: hbbs
-    image: rustdesk/rustdesk-server
-    command: hbbs -r ${ipAddress}:21117
+    image: rustdesk/rustdesk-server:latest
+    command: hbbs
     volumes:
       - ./data:/root
     ports:
@@ -169,7 +168,7 @@ services:
     restart: unless-stopped
   hbbr:
     container_name: hbbr
-    image: rustdesk/rustdesk-server
+    image: rustdesk/rustdesk-server:latest
     command: hbbr
     volumes:
       - ./data:/root
@@ -190,19 +189,24 @@ Write-Host "docker-compose.yml creado." -ForegroundColor Green
 # 5. Iniciar los servicios
 Write-Host "Iniciando los servicios de RustDesk con docker-compose..."
 docker-compose up -d
-Start-Sleep -Seconds 15
+Start-Sleep -Seconds 30  # Aumentado para dar tiempo a generar claves
 
-# 6. Mostrar información final
+# 6. Verificar y mostrar información final
 $keyPath = ".\data\id_ed25519.pub"
-if (-not (Test-Path $keyPath)) {
-  Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs con 'docker-compose logs hbbs'"; exit 1
+if (Test-Path $keyPath) {
+  $publicKey = Get-Content -Path $keyPath
+} else {
+  Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs:"
+  docker-compose logs hbbs
+  exit 1
 }
-$publicKey = Get-Content -Path $keyPath
 
 Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
 Write-Host "¡Instalación completada!" -ForegroundColor Green
-Write-Host "`nTu servidor RustDesk está funcionando en: $ipAddress"
+Write-Host "`nTu servidor RustDesk está funcionando en: $serverAddress"
+Write-Host "Configura en el cliente: ID server = $serverAddress:21116, Relay server = $serverAddress:21117"
 Write-Host "Las reglas del firewall de Windows han sido configuradas automáticamente." -ForegroundColor Green
 Write-Host "`nCopia la siguiente clave pública en tu cliente de RustDesk:"
 Write-Host "Clave pública: $publicKey" -ForegroundColor White
 Write-Host "`n----------------------------------------------------------------" -ForegroundColor Yellow
+Write-Host "Si hay problemas de conexión, verifica 'docker-compose logs hbbs' y asegúrate de que los ports estén forwarded en tu router." -ForegroundColor Yellow
