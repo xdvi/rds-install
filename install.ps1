@@ -131,8 +131,26 @@ if (-not (Test-Docker)) {
       Install-Docker-Server
       # Instalar Docker Compose solo para Server (Desktop lo incluye)
       Write-Host "Instalando Docker Compose (standalone)..." -ForegroundColor Cyan
-      $composeUrl = "https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-windows-x86_64.exe"  # Actualizado; verifica latest
+      $composeUrl = ""
+      try {
+          Write-Host "Buscando la última versión de Docker Compose..." -ForegroundColor Cyan
+          $latestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/docker/compose/releases/latest"
+          $version = $latestRelease.tag_name
+          if ($version) {
+              Write-Host "Última versión encontrada: $version" -ForegroundColor Green
+              $composeUrl = "https://github.com/docker/compose/releases/download/$version/docker-compose-windows-x86_64.exe"
+          }
+      } catch {
+          Write-Warning "No se pudo obtener la última versión de Docker Compose. Se usará una versión estable conocida."
+      }
+
+      if (-not $composeUrl) {
+          # URL de fallback si falla la API
+          $composeUrl = "https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-windows-x86_64.exe"
+      }
+
       $composePath = "C:\Program Files\Docker\docker-compose.exe"
+      Write-Host "Descargando Docker Compose desde $composeUrl..."
       Invoke-WebRequest -Uri $composeUrl -OutFile $composePath
     }
     else {
