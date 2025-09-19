@@ -41,12 +41,10 @@ function Install-Docker-Server {
     Write-Error "No se pudo extraer el ejecutable de Docker. Verifica la URL de descarga."; exit 1
   }
 
-  # 3. Instalar Docker Compose v2 como plugin
-  Write-Host "Instalando el plugin Docker Compose v2..." -ForegroundColor Cyan
-  $composePluginDir = "C:\ProgramData\Docker\cli-plugins"
-  if (-not (Test-Path $composePluginDir)) { New-Item -ItemType Directory -Path $composePluginDir -Force }
+  # 3. Instalar Docker Compose (standalone)
+  Write-Host "Instalando Docker Compose (standalone)..." -ForegroundColor Cyan
   $composeUrl = "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-windows-x86_64.exe"
-  $composePath = "$composePluginDir\docker-compose.exe"
+  $composePath = "C:\Program Files\Docker\docker-compose.exe"
   Invoke-WebRequest -Uri $composeUrl -OutFile $composePath
 
   # Limpiar archivos temporales
@@ -190,14 +188,14 @@ Set-Content -Path "docker-compose.yml" -Value $composeContent
 Write-Host "docker-compose.yml creado." -ForegroundColor Green
 
 # 5. Iniciar los servicios
-Write-Host "Iniciando los servicios de RustDesk con docker compose..."
-docker compose up -d
+Write-Host "Iniciando los servicios de RustDesk con docker-compose..."
+docker-compose up -d
 Start-Sleep -Seconds 15
 
 # 6. Mostrar información final
 $keyPath = ".\data\id_ed25519.pub"
 if (-not (Test-Path $keyPath)) {
-  Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs con 'docker compose logs hbbs'"; exit 1
+  Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs con 'docker-compose logs hbbs'"; exit 1
 }
 $publicKey = Get-Content -Path $keyPath
 
