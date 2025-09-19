@@ -31,7 +31,7 @@ function Install-Docker-Desktop {
 }
 
 function Install-Docker-Server {
-  Write-Host "Iniciando la instalación de Docker Engine para Windows Server con el método robusto..." -ForegroundColor Cyan
+  Write-Host "Iniciando la instalación de Docker Engine para Windows Server..." -ForegroundColor Cyan
 
   # 1. Habilitar la característica de Contenedores (y reiniciar SOLO si es necesario)
   if (-not (Get-WindowsFeature -Name Containers -ErrorAction SilentlyContinue).Installed) {
@@ -44,34 +44,42 @@ function Install-Docker-Server {
   }
   Write-Host "La característica 'Containers' ya está habilitada." -ForegroundColor Green
 
-  # 2. Instalar/Actualizar módulos de gestión de paquetes
-  Write-Host "Instalando NuGet y actualizando PackageManagement..." -ForegroundColor Cyan
-  Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
-  Install-Module -Name PowerShellGet -Force -AllowClobber
-  Install-Module -Name PackageManagement -Force -AllowClobber
+  # 2. Descargar e instalar Docker Engine usando el instalador MSI oficial
+  Write-Host "Descargando el instalador de Docker Engine..." -ForegroundColor Cyan
+  $installerUrl = "https://download.docker.com/win/static/stable/x86_64/docker-24.0.7.zip"  # Ajusta la versión si es necesario (verifica en https://download.docker.com/win/static/stable/x86_64/)
+  $installerPath = "$env:TEMP\docker.zip"
+  Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
 
-  # 3. Asegurar que PSGallery esté registrado y sea de confianza
-  Write-Host "Registrando y confiando en el repositorio PSGallery..." -ForegroundColor Cyan
-  if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
-    Register-PSRepository -Name "PSGallery" -SourceLocation "https://www.powershellgallery.com/api/v2" -InstallationPolicy Trusted
+  Write-Host "Extrayendo y instalando Docker..." -ForegroundColor Cyan
+  Expand-Archive -Path $installerPath -DestinationPath "$env:TEMP\docker" -Force
+  $dockerExePath = "$env:TEMP\docker\docker\dockerd.exe"
+  if (Test-Path $dockerExePath) {
+    # Copiar archivos a una ubicación permanente (ej. C:\Program Files\Docker)
+    $installDir = "C:\Program Files\Docker"
+    if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir }
+    Copy-Item -Path "$env:TEMP\docker\docker\*" -Destination $installDir -Recurse -Force
+
+    # Añadir Docker al PATH del sistema para la sesión actual y futuras
+    $existingPath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    if ($existingPath -notlike "*$installDir*") {
+        Write-Host "Añadiendo Docker al PATH del sistema..." -ForegroundColor Cyan
+        $newPath = $existingPath + ";" + $installDir
+        [System.Environment]::SetEnvironmentVariable('Path', $newPath, 'Machine')
+        $env:Path = $newPath
+    }
+
+    # Registrar Docker como servicio
+    Write-Host "Registrando Docker como servicio..." -ForegroundColor Cyan
+    & "$installDir\dockerd.exe" --register-service
+    Start-Service Docker
+  } else {
+    Write-Error "No se pudo extraer el ejecutable de Docker. Verifica la URL de descarga."; exit 1
   }
-  else {
-    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-  }
 
-  # 4. Instalar el proveedor de Docker para Microsoft
-  Write-Host "Instalando el proveedor DockerMsftProvider..." -ForegroundColor Cyan
-  Install-Module -Name DockerMsftProvider -Repository PSGallery -Force
+  # Limpiar archivos temporales
+  Remove-Item $installerPath -Force
+  Remove-Item "$env:TEMP\docker" -Recurse -Force
 
-  # 5. Limpiar instalaciones previas fallidas
-  Write-Host "Intentando desinstalar versiones anteriores de Docker si existen..." -ForegroundColor Cyan
-  Uninstall-Package -Name Docker -ProviderName DockerMsftProvider -Force -ErrorAction SilentlyContinue
-
-  # 6. Instalar Docker Engine
-  Write-Host "Instalando el paquete 'docker' con el proveedor DockerMsftProvider..." -ForegroundColor Cyan
-  Install-Package -Name docker -ProviderName DockerMsftProvider -Force
-
-  # 7. Intentar iniciar el servicio Docker
   Write-Host "Instalación de Docker finalizada. Intentando iniciar el servicio..." -ForegroundColor Green
   Start-Service Docker -ErrorAction SilentlyContinue
 }
