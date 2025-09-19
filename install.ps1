@@ -1,35 +1,3 @@
-#Requires -RunAsAdministrator
-
-<#
-.SYNOPSIS
-    Instala el servidor de RustDesk usando Docker en Windows (Escritorio o Server).
-.DESCRIPTION
-    Este script automatiza la instalación de un servidor auto-alojado de RustDesk.
-    Detecta la versión de Windows para ofrecer el instalador de Docker adecuado, configura el firewall, y lanza los contenedores.
-.NOTES
-    Autor: Gemini
-    Fecha: 2025-09-18
-#>
-
-# --- FUNCIONES ---
-
-function Install-Docker-Desktop {
-  Write-Host "Iniciando la instalación de Docker Desktop..." -ForegroundColor Cyan
-  Write-Host "Esto puede tardar varios minutos."
-  Write-Host "Habilitando Hyper-V, WSL y la plataforma de Contenedores..."
-  dism.exe /online /enable-feature /featurename:Microsoft-Hyper-V-All /all /norestart
-  dism.exe /online /enable-feature /featurename:Containers /all /norestart
-  wsl --install -d Ubuntu
-
-  $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
-  Write-Host "Descargando el instalador de Docker Desktop..."
-  Invoke-WebRequest -UseBasicParsing -Uri "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" -OutFile $installerPath
-
-  Write-Host "Instalando Docker Desktop... Por favor, espera a que finalice."
-  Start-Process -FilePath $installerPath -ArgumentList "install", "--quiet" -Wait
-  Remove-Item $installerPath
-}
-
 function Install-Docker-Server {
   Write-Host "Iniciando la instalación de Docker Engine para Windows Server..." -ForegroundColor Cyan
 
@@ -44,9 +12,9 @@ function Install-Docker-Server {
   }
   Write-Host "La característica 'Containers' ya está habilitada." -ForegroundColor Green
 
-  # 2. Descargar e instalar Docker Engine usando el instalador MSI oficial
+  # 2. Descargar e instalar Docker Engine
   Write-Host "Descargando el instalador de Docker Engine..." -ForegroundColor Cyan
-  $installerUrl = "https://download.docker.com/win/static/stable/x86_64/docker-24.0.7.zip"  # Ajusta la versión si es necesario (verifica en https://download.docker.com/win/static/stable/x86_64/)
+  $installerUrl = "https://download.docker.com/win/static/stable/x86_64/docker-24.0.7.zip"
   $installerPath = "$env:TEMP\docker.zip"
   Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
 
@@ -54,12 +22,10 @@ function Install-Docker-Server {
   Expand-Archive -Path $installerPath -DestinationPath "$env:TEMP\docker" -Force
   $dockerExePath = "$env:TEMP\docker\docker\dockerd.exe"
   if (Test-Path $dockerExePath) {
-    # Copiar archivos a una ubicación permanente (ej. C:\Program Files\Docker)
     $installDir = "C:\Program Files\Docker"
     if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir }
     Copy-Item -Path "$env:TEMP\docker\docker\*" -Destination $installDir -Recurse -Force
 
-    # Añadir Docker al PATH del sistema para la sesión actual y futuras
     $existingPath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
     if ($existingPath -notlike "*$installDir*") {
         Write-Host "Añadiendo Docker al PATH del sistema..." -ForegroundColor Cyan
@@ -68,7 +34,6 @@ function Install-Docker-Server {
         $env:Path = $newPath
     }
 
-    # Registrar Docker como servicio
     Write-Host "Registrando Docker como servicio..." -ForegroundColor Cyan
     & "$installDir\dockerd.exe" --register-service
     Start-Service Docker
@@ -76,11 +41,19 @@ function Install-Docker-Server {
     Write-Error "No se pudo extraer el ejecutable de Docker. Verifica la URL de descarga."; exit 1
   }
 
+  # 3. Instalar Docker Compose v2 como plugin
+  Write-Host "Instalando el plugin Docker Compose v2..." -ForegroundColor Cyan
+  $composePluginDir = "C:\ProgramData\Docker\cli-plugins"
+  if (-not (Test-Path $composePluginDir)) { New-Item -ItemType Directory -Path $composePluginDir -Force }
+  $composeUrl = "https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-windows-x86_64.exe"
+  $composePath = "$composePluginDir\docker-compose.exe"
+  Invoke-WebRequest -Uri $composeUrl -OutFile $composePath
+
   # Limpiar archivos temporales
   Remove-Item $installerPath -Force
   Remove-Item "$env:TEMP\docker" -Recurse -Force
 
-  Write-Host "Instalación de Docker finalizada. Intentando iniciar el servicio..." -ForegroundColor Green
+  Write-Host "Instalación de Docker y Compose finalizada. Intentando iniciar el servicio..." -ForegroundColor Green
   Start-Service Docker -ErrorAction SilentlyContinue
 }
 
@@ -217,14 +190,14 @@ Set-Content -Path "docker-compose.yml" -Value $composeContent
 Write-Host "docker-compose.yml creado." -ForegroundColor Green
 
 # 5. Iniciar los servicios
-Write-Host "Iniciando los servicios de RustDesk con docker-compose..."
-docker-compose up -d
+Write-Host "Iniciando los servicios de RustDesk con docker compose..."
+docker compose up -d
 Start-Sleep -Seconds 15
 
 # 6. Mostrar información final
 $keyPath = ".\data\id_ed25519.pub"
 if (-not (Test-Path $keyPath)) {
-  Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs con 'docker-compose logs hbbs'"; exit 1
+  Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs con 'docker compose logs hbbs'"; exit 1
 }
 $publicKey = Get-Content -Path $keyPath
 
