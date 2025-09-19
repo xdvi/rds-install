@@ -73,6 +73,15 @@ function Test-Docker {
   }
 }
 
+function Test-DockerCompose {
+  try {
+    docker-compose --version > $null; return $true
+  }
+  catch {
+    return $false
+  }
+}
+
 function Get-PublicIP {
     param (
         [string[]]$Services = @(
@@ -150,7 +159,7 @@ if (-not (Test-Docker)) {
       }
 
       $composePath = "C:\Program Files\Docker\docker-compose.exe"
-      Write-Host "Descargando Docker Compose desde $composeUrl..."
+      Write-Host "Descargando Docker Compose desde $composeUrl..." -ForegroundColor Cyan
       try {
           Invoke-WebRequest -Uri $composeUrl -OutFile $composePath -ErrorAction Stop
       } catch {
@@ -159,6 +168,14 @@ if (-not (Test-Docker)) {
 
       if (-not (Test-Path $composePath)) {
           Write-Error "El archivo docker-compose.exe no se encontró en la ruta esperada después de la descarga. Saliendo."; exit 1
+      }
+
+      # Verificar que docker-compose sea ejecutable
+      try {
+        $composeVersion = & $composePath --version
+        Write-Host "Docker Compose instalado correctamente: $composeVersion" -ForegroundColor Green
+      } catch {
+        Write-Error "No se pudo ejecutar docker-compose.exe. Verifica permisos y compatibilidad."; exit 1
       }
     }
     else {
@@ -188,10 +205,16 @@ if (-not (Test-Docker)) {
 }
 Write-Host "Docker está listo." -ForegroundColor Green
 
-# 2. Configurar Firewall
+# 2. Verificar Docker Compose
+if (-not (Test-DockerCompose)) {
+  Write-Error "Docker Compose no está instalado o no se encuentra en el PATH. Asegúrate de que esté instalado y vuelve a ejecutar el script."; exit 1
+}
+Write-Host "Docker Compose está listo." -ForegroundColor Green
+
+# 3. Configurar Firewall
 Set-FirewallRules
 
-# 3. Obtener la dirección del servidor
+# 4. Obtener la dirección del servidor
 $serverAddress = ""
 Write-Host "
 Configuración de la dirección pública del servidor." -ForegroundColor Cyan
@@ -215,7 +238,7 @@ if ($choice -eq 'n' -or $choice -eq 'N') {
 if (-not $serverAddress) { Write-Error "La dirección del servidor es necesaria para continuar. Saliendo."; exit 1 }
 Write-Host "La dirección del servidor se ha establecido en: $serverAddress" -ForegroundColor Green
 
-# 4. Crear el archivo docker-compose.yml (sin -r; auto-detect)
+# 5. Crear el archivo docker-compose.yml (sin -r; auto-detect)
 $composeContent = @"
 version: '3'
 services:
@@ -255,18 +278,18 @@ Write-Host "Creando archivo docker-compose.yml..."
 Set-Content -Path "docker-compose.yml" -Value $composeContent
 Write-Host "docker-compose.yml creado." -ForegroundColor Green
 
-# 5. Iniciar los servicios
+# 6. Iniciar los servicios
 Write-Host "Iniciando los servicios de RustDesk con docker-compose..."
-& "C:\Program Files\Docker\docker-compose.exe" up -d
+docker-compose up -d
 Start-Sleep -Seconds 30  # Aumentado para dar tiempo a generar claves
 
-# 6. Verificar y mostrar información final
+# 7. Verificar y mostrar información final
 $keyPath = ".\data\id_ed25519.pub"
 if (Test-Path $keyPath) {
   $publicKey = Get-Content -Path $keyPath
 } else {
   Write-Warning "No se pudo encontrar el archivo de clave pública. Revisa los logs:"
-& "C:\Program Files\Docker\docker-compose.exe" logs hbbs
+  docker-compose logs hbbs
   exit 1
 }
 
